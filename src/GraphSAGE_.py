@@ -1,9 +1,4 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Mar 22 17:16:34 2023
-
-@author: Admin
-"""
+############
 import torch as torch
 import pandas as pd
 import numpy as np
@@ -25,7 +20,7 @@ from tqdm import tqdm
 class GraphSAGE(nn.Module):
     def __init__(self, 
                  in_feats,
-                 n_hidden, # hidden size也可以是一个list
+                 n_hidden,
                  n_classes,
                  n_layers,
                  activation,
@@ -59,15 +54,14 @@ def evaluate(data, epoches,val_nid, val_mask,val_nid_n_val,val_mask_n_val, args,
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device("cpu")
     in_feats, n_classes, my_net = data
     hidden_size, n_layers, activation, dropout, aggregator, batch_s, num_worker  = args
-    # 设置一下训练集和测试集，val_mask
-    # 训练模型的过程 
+    # The process of training the model 
     if model is None:
         model = GraphSAGE(in_feats, hidden_size, n_classes, n_layers, activation, dropout, aggregator)
         model_path = glob("./dti/graphsage_*.pt")[-1]
         # model_path = "./dti/graphsage_before5_val4_50+100+100.pt"
         model_static = torch.load(model_path)
         model.load_state_dict(model_static.state_dict())
-    labels = my_net.ndata['label']    #1070496
+    labels = my_net.ndata['label']
     model.eval()
     model.to(device)
     sampler = dgl.dataloading.MultiLayerNeighborSampler(sample_size)
@@ -82,11 +76,11 @@ def evaluate(data, epoches,val_nid, val_mask,val_nid_n_val,val_mask_n_val, args,
                 num_workers=0
             )
 
-    ret = torch.zeros(my_net.num_nodes(), n_classes)    #1070496*2
-
+    ret = torch.zeros(my_net.num_nodes(), n_classes)
+    
     # features = []
     for input_nodes, output_nodes, blocks in dataloader:
-        h = blocks[0].srcdata['features'].to(device)     #51004*200
+        h = blocks[0].srcdata['features'].to(device)
         block = [block_.int().to(device) for block_ in blocks]
         with torch.no_grad():
             h,h_feature = model(block, h)
@@ -106,15 +100,15 @@ def evaluate(data, epoches,val_nid, val_mask,val_nid_n_val,val_mask_n_val, args,
     
     num = len(new_label_pred)
     acc = (pred == target).sum() / num
-    precision = np.sum((pred+target)==2)/pred.sum()   #zhen 1
-    recall = np.sum((pred+target)==2)/target.sum()     #TPR
+    precision = np.sum((pred+target)==2)/pred.sum()
+    recall = np.sum((pred+target)==2)/target.sum()
     f1 = 2*(precision*recall)/(precision+recall)
     fpr,tpr,threshold = roc_curve(target,pred_prob[:,1])
     roc_auc = auc(fpr,tpr)
     P,R,thres = precision_recall_curve(target,pred_prob[:,1])
     pr_auc = auc(R,P)
     print('Test ACC: %.4f |precision: %0.4f | recall: %0.4f | f1: %0.4f| auc: %.4f | aupr: %.4f'% (acc, precision,recall,f1, roc_auc,pr_auc))
-    F = open("/media/rasho/Ningning/graphSAGE-pytorch-master/G_parameter_adjust/split5_val4_lstm.txt",'a')
+    F = open("./result/G_parameter_adjust/split5_val4_lstm.txt",'a')
     s = str('Test ACC: %.4f |precision: %0.4f | recall: %0.4f | f1: %0.4f| auc: %.4f | aupr: %.4f'% (acc, precision,recall,f1, roc_auc,pr_auc))
     TPTN=(pred == target).sum()
     TP=np.sum((pred+target)==2)
@@ -126,19 +120,18 @@ def evaluate(data, epoches,val_nid, val_mask,val_nid_n_val,val_mask_n_val, args,
     return acc,precision,recall,f1,fpr,tpr,roc_auc,P,R,pr_auc
 
 def run(data, train_val_data, args, sample_size, learning_rate,epoches, device_num):
-    print("开始训练")
+    print("Start training")
     train_mask, val_mask, val_mask_n_val,train_nid, val_nid,val_nid_n_val = train_val_data
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device("cpu")
     in_feats, n_classes, my_net = data
     hidden_size, n_layers, activation, dropout, aggregator, batch_s, num_worker  = args
-    # 设置一下训练集和测试集，val_mask
-    # 训练模型的过程  
+    # The process of training the model  
     model = GraphSAGE(in_feats, hidden_size, n_classes, n_layers, activation, dropout, aggregator)
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_fun = nn.CrossEntropyLoss()
     loss_fun.to(device)
-    sampler = dgl.dataloading.MultiLayerNeighborSampler(sample_size)    #其中每个节点分别从第一、第二层的 10、25 个邻居获取消息
+    sampler = dgl.dataloading.MultiLayerNeighborSampler(sample_size)
     dataloader = dgl.dataloading.NodeDataLoader(
         my_net,
         train_nid,
@@ -157,11 +150,8 @@ def run(data, train_val_data, args, sample_size, learning_rate,epoches, device_n
             batch_feature, batch_label = batch_feature.to(device),batch_label.to(device)
             block = [block_.int().to(device) for block_ in block]
             model_pred,mode_feature = model(block, batch_feature)
-            # batch_label_n = batch_label.numpy()  
             loss = loss_fun(model_pred, batch_label)
-            # loss = loss_fun(y_pred, batch_label)
             optimizer.zero_grad()
-            # loss.requires_grad_(True)
             loss.backward()
             optimizer.step()
             
@@ -173,7 +163,7 @@ def run(data, train_val_data, args, sample_size, learning_rate,epoches, device_n
     del dataloader
     gc.collect()       
 
-    # 模型训练完毕，检查test集合的acc
+    # Model training completed
     acc,precision,recall,f1,fpr,tpr,roc_auc,P,R,pr_auc = evaluate(data,epoch, val_nid, val_mask, val_nid_n_val, val_mask_n_val,args,sample_size,model=model)
     print('Test ACC: %.4f |precision: %0.4f | recall: %0.4f | f1:%0.4f| auc:%.4f | aupr:%.4f'% (acc, precision,recall,f1, roc_auc,pr_auc))
     with open("./dti/metrci.pkl",'wb') as f:
@@ -183,22 +173,20 @@ def run(data, train_val_data, args, sample_size, learning_rate,epoches, device_n
     
     plt.title('ROC Curve')
     plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')  # 可以使用中文，但需要导入一些库即字体
+    plt.ylabel('True Positive Rate')
 
     plt.subplot(122)
     plt.plot(R, P, 'k--', label='P-R (area = {0:.2f})', lw=2)
     plt.title('Precision/Recall Curve')
     plt.xlabel('Recall')
     plt.ylabel('Precision')
-
-    plt.xlim([-0.05, 1.05])  # 设置x、y轴的上下限
+    plt.xlim([-0.05, 1.05])
     plt.show()
 
     return model
 
 def train_val_split(node_fea,labels_select_node,node_fea_all):
     print("split data") 
-    # 简单划分下训练集
     with open("./dti/negetive_labels_node_1923.pkl",'rb') as f:
         negetive_labels_node_1923 = pickle.load(f)
     train_node_ids = []
@@ -206,29 +194,27 @@ def train_val_split(node_fea,labels_select_node,node_fea_all):
     val_node_ids_n_val =[]
 
     for label,group in node_fea.groupby('label_number'):
-        node_id_numbers = group.sort_values('node_id_number')['node_id_number']  # anzhao node_id_number  paixu
+        node_id_numbers = group.sort_values('node_id_number')['node_id_number']
         numbers = len(node_id_numbers) 
-        # 数据分为多少分
         ratio = int(numbers*1/5)
         data_split  = []
         for i in list(range(0,numbers,ratio)):
             data_split.append([i,i+ratio])
-        # 选第几等分数据作为验证集
         val_ratio_number = data_split[1]
         data_split.remove(val_ratio_number)
         for s,e in data_split:
             train_node_ids.extend(node_id_numbers[s:e])
         s,e = val_ratio_number
-        val_node_ids.extend(node_id_numbers[s:e])      #<class 'list'>
+        val_node_ids.extend(node_id_numbers[s:e])
     for i in range(len(labels_select_node)):
         val_node_ids_n_val.append(labels_select_node[i][1])
 
-    val_nid_dict_n_val = {nid:i for i,nid in enumerate(val_node_ids_n_val)}     #1923+384/2 =2115
-    train_nid_dict = {nid:i for i,nid in enumerate(train_node_ids)}       #9 zhe
-    val_nid_dict = {nid:i for i,nid in enumerate(val_node_ids)}           #1 zhe
+    val_nid_dict_n_val = {nid:i for i,nid in enumerate(val_node_ids_n_val)} 
+    train_nid_dict = {nid:i for i,nid in enumerate(train_node_ids)}
+    val_nid_dict = {nid:i for i,nid in enumerate(val_node_ids)}
     
-    train_mask = node_fea_all['node_id_number'].apply(lambda x : train_nid_dict.get(x) is not None)     #1070496
-    val_mask = node_fea_all['node_id_number'].apply(lambda x : val_nid_dict.get(x) is not None)         #1070496
+    train_mask = node_fea_all['node_id_number'].apply(lambda x : train_nid_dict.get(x) is not None)
+    val_mask = node_fea_all['node_id_number'].apply(lambda x : val_nid_dict.get(x) is not None)
     val_mask_n_val = node_fea_all['node_id_number'].apply(lambda x : val_nid_dict_n_val.get(x) is not None) 
 
     return train_mask, val_mask, val_mask_n_val,train_node_ids, val_node_ids,val_node_ids_n_val
@@ -238,17 +224,16 @@ def read_dti_data(dti_feat_file,dti_adj_file):
     labels = []  # label sequence of node
     node_map = {}  # map node to Node_ID
     label_map = {}  # map label to Label_ID
-    #feats_number = 0
     ind = 0
     negetive_labels =[]
     positive_labels =[]
     
     with open(dti_feat_file) as fp:
         for i, line in tqdm(enumerate(fp)):
-            info = line.strip().split()      #<class 'list'>  len:203   ['(707,', '1511)', '0.2039', '0.3934',........, '0']
-            feat_data.append([float(x) for x in info[2:-1]])  #<class 'numpy.ndarray'>   shape:(1070496, 200)  
-            info1=info[:2]                    #<class 'list'>  len:2    ['(707,', '1511)']
-            info2=str(info1).replace("'",'').replace(',','').strip()  #<class 'str'>  len:12    '[(707 1511)]'     '[(707 1511)]'
+            info = line.strip().split()
+            feat_data.append([float(x) for x in info[2:-1]])  
+            info1=info[:2]
+            info2=str(info1).replace("'",'').replace(',','').strip()
             if info2 not in node_map:
                 node_map[info2] = ind
                 ind += 1
@@ -260,12 +245,10 @@ def read_dti_data(dti_feat_file,dti_adj_file):
             else:
                 negetive_labels.append([label_map[info[-1]],node_map[info2]])
 
-    feat_data = np.asarray(feat_data)       #<class 'numpy.ndarray'>   shape:(1070496, 200)
-    labels_node = np.asarray(labels, dtype=np.int64)    #<class 'numpy.ndarray'>   len:1070496
+    feat_data = np.asarray(feat_data)
+    labels_node = np.asarray(labels, dtype=np.int64)
     negetive_labels_node = np.asarray(negetive_labels, dtype=np.int64)
-    #从负样本中随机选1923个
-    a = random.sample(negetive_labels,1923)   #<class 'list'> 随机选择1923个元素构成一个列表a
-    # aa = np.asarray(a, dtype=np.int64)     #ddddddddddddddddddd
+    a = random.sample(negetive_labels,1923)
     positive_labels_node_1923 = np.asarray(positive_labels, dtype=np.int64)
 
     labels_select = []
@@ -273,29 +256,8 @@ def read_dti_data(dti_feat_file,dti_adj_file):
         labels_select.append(p_l)
     for n_l in a:
         labels_select.append(n_l)
-    labels_select_node = np.asarray(labels_select, dtype=np.int64)   #<class 'numpy.ndarray'>   
+    labels_select_node = np.asarray(labels_select, dtype=np.int64)  
     
-    # edge1 = []
-    # edge2 = []
-   
-    # with open(os.path.join(dti_adj_file,"output2.txt")) as fp:
-    #     for i, line in tqdm(enumerate(fp)):
-    #         info = line.strip().split()
-    #         assert len(info) == 4
-    #         info1 = info[:2]
-    #         info11 = info[2:4]
-    #         info2 = str(info1).replace("'", '').replace(',', '').strip()
-    #         info3 = str(info11).replace("'", '').replace(',', '').strip()
-    #         paper1 = node_map[info2]
-    #         paper2 = node_map[info3]
-    #         edge1.append(paper1)
-    #         edge2.append(paper2)
-
-    # edge1 = np.array(edge1)
-    # edge2 = np.array(edge2)
-    # pickle.dump(edge1, open("./dti/edge1.pkl",'wb'), protocol=4)    #fengzhuang
-    # pickle.dump(edge2, open("./dti/edge2.pkl",'wb'), protocol=4)
-
     edge3 = []
     edge4 = []
    
@@ -314,7 +276,7 @@ def read_dti_data(dti_feat_file,dti_adj_file):
 
     edge3 = np.array(edge3)
     edge4 = np.array(edge4)
-    pickle.dump(edge3, open("./dti/edge3.pkl",'wb'), protocol=4)    #fengzhuang
+    pickle.dump(edge3, open("./dti/edge3.pkl",'wb'), protocol=4)
     pickle.dump(edge4, open("./dti/edge4.pkl",'wb'), protocol=4)
 
     with open("./dti/label_map.json",'w') as f:
@@ -374,7 +336,7 @@ def loaddata(is_training):
         del graphsage_embedding
         gc.collect()
     my_net.ndata['label'] = torch.tensor(labels_node[:,0])
-    n_classes = len(label_map)    #2
+    n_classes = len(label_map)
     data = in_feats, n_classes, my_net
 
     node_fea_all = pd.DataFrame(labels_node,columns=['label_number','node_id_number'])
@@ -405,11 +367,10 @@ epoches = 50
 device = 1
 
 args =  hidden_size, n_layers, activation, dropout, aggregator, batch_s, num_worker  
-# 训练模型
+# Train the model
 trained_model = run(data, train_val_data, args, sample_size, learning_rate,epoches,device)
-# 单独利用训练好的模型进行预测
+# Use the trained model alone to predict
 train_mask, val_mask, val_mask_n_val,train_nid, val_nid,val_nid_n_val = train_val_data
-# # 模型训练完毕，检查test集合的acc
 acc,precision,recall,f1,fpr,tpr,roc_auc,P,R,pr_auc = evaluate(data, epoches,val_nid, val_mask,val_nid_n_val,val_mask_n_val, args,sample_size,trained_model)
 print('Test ACC: %.4f |precision: %0.4f | recall: %0.4f | f1:%0.4f| auc:%.4f' % (acc, precision,recall,f1, roc_auc))
 
