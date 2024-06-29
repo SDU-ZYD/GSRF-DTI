@@ -35,6 +35,8 @@ We provide the data files `output.rar` and `dt_feature.rar` needed to finally im
 - `ppi.txt`: target homogenous network
 - `output.rar`: DTPs-NET
 - `dt_feature.rar`: the initial feature of DTPs
+### `new_datasets/` directory
+- The new dataset constructed in this paper is used to test GSRF-DTI, and details of the files in the folder are provided in `README.txt`.
 ### `dti/` directory
 - `node_map.json`: a complete ID mapping of DTPs
 ```
